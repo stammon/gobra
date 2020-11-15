@@ -4,6 +4,10 @@
 //
 // Copyright (c) 2011-2020 ETH Zurich.
 
+scalaVersion := "2.12.12"
+ThisBuild / scalaVersion := "2.12.12"
+dependencyOverrides += "org.scala-lang" % "scala-library" % scalaVersion.value
+
 import scala.sys.process.Process
 import scala.util.Try
 
@@ -43,7 +47,8 @@ lazy val gobra = (project in file("."))
 
     scalacOptions ++= Seq(
       "-Ypartial-unification",
-      "-Ypatmat-exhaust-depth", "40"
+      "-Ypatmat-exhaust-depth",
+      "40"
     ),
 
     // Run settings
