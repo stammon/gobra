@@ -1,0 +1,38 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "scala",
+      "request": "launch",
+      // configuration name visible for the user
+      "name": "Main class",
+      // full name of the class to run
+      "mainClass": "viper.gobra.GobraRunner",
+      // optional arguments for the main class
+      //"args": ["-i","src/test/resources/regressions/features/while1.gobra"],
+      "args": ["-i", "purefuncExample.gobra"],
+
+      // optional jvm properties to use
+      "jvmOptions": []
+      // optional build target name in case there more than one
+      // class with the same name
+      //"buildTarget": "root"
+    },
+    {
+      "type": "scala",
+      "request": "launch",
+      "name": "Wrong Postcondition",
+      "mainClass": "viper.gobra.GobraRunner",
+      //"args": ["--printVpr","--printInternal","-i","wrongPostcondition.gobra","-d"],
+      // "args": ["-i","src/test/resources/regressions/features/purefuncs/quantifier2.gobra"],
+      "args": [
+        "-d",
+        "-i",
+        "src/test/resources/regressions/issues/000114-2.gobra"
+      ]
+    }
+  ]
+}
