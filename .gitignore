@@ -12,3 +12,8 @@ logger.log
 
 *.go.*
 *.gobra.*
+
+.metals/
+.bloop/
+.ammonite/
+metals.sbt
