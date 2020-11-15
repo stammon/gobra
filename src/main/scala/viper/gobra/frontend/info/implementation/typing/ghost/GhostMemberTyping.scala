@@ -27,19 +27,21 @@ trait GhostMemberTyping extends BaseTyping { this: TypeInfoImpl =>
 
   private[typing] def wellDefIfPureMethod(member: PMethodDecl): Messages = {
 
-    if (member.spec.isPure) {
-      isSingleResultArg(member) ++
-        isSinglePureReturnExpr(member) ++
-        isPurePostcondition(member.spec)
-    } else noMessages
+    // if (member.spec.isPure) {
+    //   isSingleResultArg(member) ++
+    //     isSinglePureReturnExpr(member) ++
+    //     isPurePostcondition(member.spec)
+    // } else
+    noMessages
   }
 
   private[typing] def wellDefIfPureFunction(member: PFunctionDecl): Messages = {
-    if (member.spec.isPure) {
-      isSingleResultArg(member) ++
-        isSinglePureReturnExpr(member) ++
-        isPurePostcondition(member.spec)
-    } else noMessages
+    // if (member.spec.isPure) {
+    //   isSingleResultArg(member) ++
+    //     isSinglePureReturnExpr(member) ++
+    //     isPurePostcondition(member.spec)
+    // } else 
+    noMessages
   }
 
   private def isSingleResultArg(member: PCodeRootWithResult): Messages = {

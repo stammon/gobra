@@ -13,7 +13,7 @@ import viper.silver.{ast => vpr}
 import viper.gobra.reporting.Source.Parser
 import viper.gobra.util.Violation
 import viper.gobra.theory.Addressability.Exclusive
-import viper.gobra.ast.internal.transform.OverflowChecksTransform
+// import viper.gobra.ast.internal.transform.OverflowChecksTransform
 
 class PureMethodsImpl extends PureMethods {
 
@@ -342,15 +342,15 @@ class PureMethodsImpl extends PureMethods {
     }
 
     val transformed = func.body.map(encodeBlockToExpression(_, func.args, func.results))
-    val overflowPosts =
-      transformed.map(OverflowChecksTransform.getPureBlockPosts(_, func.results)).getOrElse((Vector()))
-    val vOverflowPosts = overflowPosts.map(ctx.ass.postcondition(_)(ctx))
+    // val overflowPosts =
+    //   transformed.map(OverflowChecksTransform.getPureBlockPosts(_, func.results)).getOrElse((Vector()))
+    // val vOverflowPosts = overflowPosts.map(ctx.ass.postcondition(_)(ctx))
 
     for {
       pres <- sequence(vArgPres ++ func.pres.map(ctx.ass.precondition(_)(ctx)))
       posts <- sequence(
-        vResultPosts ++ vOverflowPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
-        // vResultPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
+        //vResultPosts ++ vOverflowPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
+        vResultPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
       )
 
       body <- option(transformed map { b =>
