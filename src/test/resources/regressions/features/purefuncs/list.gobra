@@ -1,0 +1,35 @@
+package pkg;
+
+type list struct{
+		val int;
+		next *list;
+};
+
+// todo add annotation to show it's wrong
+// pure func sum1(a list) (res int) {
+// 	if a.next == nil {
+// 		return a.val
+// 	}
+// 	return a.val + sum1(*a.next)
+// };
+
+
+pred listAcc(self *list){
+	acc(&self.val) && acc(&self.next) &&
+	((&self.next!=nil) ==> listAcc(self.next))
+}
+
+requires listAcc(a)
+pure func unfoldForMePlease(a *list) (res int){
+	return unfolding listAcc(a) in sum3(a)
+}
+
+requires acc(&a.val)
+requires acc(&a.next)
+requires (a.next!=nil) ==> listAcc(a.next)
+pure func sum3(a *list) (res int) {
+	if a.next == nil {
+		return a.val
+	}
+	return a.val + unfoldForMePlease(a.next)
+};

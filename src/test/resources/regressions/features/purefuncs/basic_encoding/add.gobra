@@ -1,0 +1,76 @@
+// Any copyright is dedicated to the Public Domain.
+// http://creativecommons.org/publicdomain/zero/1.0/
+
+package pkg;
+
+ensures res == a + b
+pure func add1(a, b int) (res int) {
+    sum := a + b
+    return sum
+}
+
+
+ensures res == a + b
+pure func add2(a, b int) (res int) {
+    sum := a + b
+    return a + b
+}
+
+
+ensures res == a + b
+pure func add3(a, b int) (res int) {
+    return a + b
+}
+
+
+ensures res == a + b
+pure func add4(a, b int) (res int) {
+    return a + b + b - b
+}
+
+requires a >= 0
+requires b >= 0
+ensures res == a + b
+pure func rec_add1(a, b int) (res int){
+    if a == 0 {
+        return b
+    }
+    return rec_add1(a-1,b+1)
+}
+
+
+requires a >= 0
+requires b >= 0
+ensures res == a + b
+pure func rec_add2(a, b int) (res int){
+    if a == 0 {
+        return b
+    }
+    a = a-1
+    b = b+1
+    return rec_add2(a,b)
+}
+
+requires a >= 0
+requires b >= 0
+ensures res == a + b
+pure func rec_add3(a, b int) (res int){
+    if a == 0 {
+        return b
+    }
+    a = a-1
+    b = 2*(b+1)-1 -b
+    return rec_add3(a,b)
+}
+
+requires a >= 0
+requires b >= 0
+ensures res == a + b
+pure func rec_add4(a, b int) (res int){
+    if a == 0 {
+        return b
+    }
+    a = a-1
+    b = 2*(b+1)-1-a -b
+    return rec_add4(a,b+a)
+}
