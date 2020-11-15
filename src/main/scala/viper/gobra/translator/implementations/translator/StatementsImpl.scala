@@ -17,9 +17,6 @@ import viper.silver.{ast => vpr}
 
 class StatementsImpl extends Statements {
 
-  var counter: Int = 0
-
-  def count: Int = {counter += 1; counter}
 
   import viper.gobra.translator.util.ViperWriter.CodeLevel._
 

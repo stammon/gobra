@@ -222,6 +222,7 @@ trait NameResolution { this: TypeInfoImpl =>
         tryDotLookup(n.base, id).map(_._1).getOrElse(UnknownEntity())
 
       case tree.parent.pair(id: PIdnDef, _: PMethodDecl) => defEntity(id)
+      case tree.parent.pair(id: PIdnDef, _: PFunctionDecl) => defEntity(id)
 
       case tree.parent.pair(id: PIdnDef, _: PMPredicateDecl) => defEntity(id)
 
