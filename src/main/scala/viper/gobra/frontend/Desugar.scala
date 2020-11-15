@@ -302,37 +302,87 @@ object Desugar {
       val fsrc = meta(decl)
 
       val argsWithSubs = decl.args.zipWithIndex map { case (p,i) => inParameterD(p,i) }
-      val (args, _) = argsWithSubs.unzip
+      val (args, argSubs) = argsWithSubs.unzip // purefunc had no argSubs. Why? todo
 
       val returnsWithSubs = decl.result.outs.zipWithIndex map { case (p,i) => outParameterD(p,i) }
-      val (returns, _) = returnsWithSubs.unzip
+      val (returns, returnSubs) = returnsWithSubs.unzip // purc had no returnSubs. Wh? todo
 
-      // create context for body translation
-      val ctx = new FunctionContext(_ => _ => in.Seqn(Vector.empty)(fsrc)) // dummy assign
+      def assignReturns(rets: Vector[in.Expr])(src: Meta): in.Stmt = {
+        if (rets.isEmpty) {
+          in.Seqn(
+            returnsWithSubs.flatMap{
+              case (p, Some(v)) => Some(in.SingleAss(in.Assignee.Var(p), v)(src))
+              case _ => None
+            } :+ in.Return()(src)
+          )(src)
+        } else if (rets.size == returns.size) {
+          in.Seqn(
+            returns.zip(rets).map{
+              case (p, v) => in.SingleAss(in.Assignee.Var(p), v)(src)
+            } :+ in.Return()(src)
+          )(src)
+        } else if (rets.size == 1) { // multi assignment
+          in.Seqn(Vector(
+            multiassD(returns.map(v => in.Assignee.Var(v)), rets.head)(src),
+            in.Return()(src)
+          ))(src)
+        } else {
+          violation(s"found ${rets.size} returns but expected 0, 1, or ${returns.size}")
+        }
+      }
+
+      // create context for spec translation
+      val specCtx = new FunctionContext(assignReturns)
 
       // extent context
       (decl.args zip argsWithSubs).foreach {
         // substitution has to be added since otherwise the parameter is translated as a addressable variable
         // TODO: another, maybe more consistent, option is to always add a context entry
-        case (NoGhost(PNamedParameter(id, _)), (p, _)) => ctx.addSubst(id, p)
+        case (NoGhost(PNamedParameter(id, _)), (p, _)) => specCtx.addSubst(id, p)
         case _ =>
       }
 
       (decl.result.outs zip returnsWithSubs).foreach {
-        case (NoGhost(PNamedParameter(id, _)), (p, _)) => ctx.addSubst(id, p)
+        case (NoGhost(PNamedParameter(id, _)), (p, _)) => specCtx.addSubst(id, p)
         case _ =>
       }
 
       // translate pre- and postconditions
-      val pres = decl.spec.pres map preconditionD(ctx)
-      val posts = decl.spec.posts map postconditionD(ctx)
+      val pres = decl.spec.pres map preconditionD(specCtx)
+      val posts = decl.spec.posts map postconditionD(specCtx)
 
-      val bodyOpt = decl.body.map {
-        case (_, b: PBlock) =>
-          b.nonEmptyStmts match {
-            case Vector(PReturn(Vector(ret))) => pureExprD(ctx)(ret)
-            case b => Violation.violation(s"unexpected pure function body: $b")
-          }
+      // p1' := p1; ... ; pn' := pn
+      val argInits = argsWithSubs.flatMap{
+        case (p, Some(q)) => Some(in.SingleAss(in.Assignee.Var(q), p)(p.info))
+        case _ => None
+      }
+
+      // r1 := r1'; .... rn := rn'
+      val resultAssignments =
+        returnsWithSubs.flatMap{
+          case (p, Some(v)) => Some(in.SingleAss(in.Assignee.Var(p), v)(fsrc))
+          case _ => None
+        } // :+ in.Return()(fsrc)
+
+      // create context for body translation
+      val ctx = new FunctionContext(assignReturns)
+
+      // extent context
+      (decl.args zip argsWithSubs).foreach{
+        case (NoGhost(PNamedParameter(id, _)), (_, Some(q))) => ctx.addSubst(id, q)
+        case _ =>
+      }
+
+      (decl.result.outs zip returnsWithSubs).foreach{
+        case (NoGhost(PNamedParameter(id, _)), (_, Some(q))) => ctx.addSubst(id, q)
+        case (NoGhost(_: PUnnamedParameter), (_, Some(q))) => violation("cannot have an alias for an unnamed parameter")
+        case _ =>
+      }
+
+      val bodyOpt = decl.body.map{ case (_, s) =>
+        val vars = argSubs.flatten ++ returnSubs.flatten
+        val body = argInits ++ Vector(blockD(ctx)(s)) ++ resultAssignments
+        in.Block(vars, body)(meta(s))
       }
 
       in.PureFunction(name, args, returns, pres, posts, bodyOpt)(fsrc)
@@ -461,45 +511,108 @@ object Desugar {
       val fsrc = meta(decl)
 
       val recvWithSubs = receiverD(decl.receiver)
-      val (recv, _) = recvWithSubs
+      val (recv, recvSub) = recvWithSubs
 
       val argsWithSubs = decl.args.zipWithIndex map { case (p,i) => inParameterD(p,i) }
-      val (args, _) = argsWithSubs.unzip
+      val (args, argSubs) = argsWithSubs.unzip
 
       val returnsWithSubs = decl.result.outs.zipWithIndex map { case (p,i) => outParameterD(p,i) }
-      val (returns, _) = returnsWithSubs.unzip
+      val (returns, returnSubs) = returnsWithSubs.unzip
 
-      // create context for body translation
-      val ctx = new FunctionContext(_ => _ => in.Seqn(Vector.empty)(fsrc)) // dummy assign
+      def assignReturns(rets: Vector[in.Expr])(src: Meta): in.Stmt = {
+        if (rets.isEmpty) {
+          in.Seqn(
+            returnsWithSubs.flatMap{
+              case (p, Some(v)) => Some(in.SingleAss(in.Assignee.Var(p), v)(src))
+              case _ => None
+            } :+ in.Return()(src)
+          )(src)
+        } else if (rets.size == returns.size) {
+          in.Seqn(
+            returns.zip(rets).map{
+              case (p, v) => in.SingleAss(in.Assignee.Var(p), v)(src)
+            } :+ in.Return()(src)
+          )(src)
+        } else if (rets.size == 1) { // multi assignment
+          in.Seqn(Vector(
+            multiassD(returns.map(v => in.Assignee.Var(v)), rets.head)(src),
+            in.Return()(src)
+          ))(src)
+        } else {
+          violation(s"found ${rets.size} returns but expected 0, 1, or ${returns.size}")
+        }
+      }
+
+      // create context for spec translation
+      val specCtx = new FunctionContext(assignReturns)
+
 
       // extent context
       (decl.args zip argsWithSubs).foreach{
         // substitution has to be added since otherwise the parameter is translated as an addressable variable
         // TODO: another, maybe more consistent, option is to always add a context entry
-        case (NoGhost(PNamedParameter(id, _)), (p, _)) => ctx.addSubst(id, p)
+        case (NoGhost(PNamedParameter(id, _)), (p, _)) => specCtx.addSubst(id, p)
         case _ =>
       }
 
       (decl.receiver, recvWithSubs) match {
-        case (NoGhost(PNamedReceiver(id, _, _)), (p, _)) => ctx.addSubst(id, p)
+        case (NoGhost(PNamedReceiver(id, _, _)), (p, _)) => specCtx.addSubst(id, p)
         case _ =>
       }
 
       (decl.result.outs zip returnsWithSubs).foreach {
-        case (NoGhost(PNamedParameter(id, _)), (p, _)) => ctx.addSubst(id, p)
+        case (NoGhost(PNamedParameter(id, _)), (p, _)) => specCtx.addSubst(id, p)
         case _ =>
       }
 
       // translate pre- and postconditions
-      val pres = decl.spec.pres map preconditionD(ctx)
-      val posts = decl.spec.posts map postconditionD(ctx)
+      val pres = decl.spec.pres map preconditionD(specCtx)
+      val posts = decl.spec.posts map postconditionD(specCtx)
 
-      val bodyOpt = decl.body.map {
-        case (_, b: PBlock) =>
-          b.nonEmptyStmts match {
-            case Vector(PReturn(Vector(ret))) => pureExprD(ctx)(ret)
-            case s => Violation.violation(s"unexpected pure function body: $s")
-          }
+      // s' := s
+      val recvInits = (recvWithSubs match {
+        case (p, Some(q)) => Some(in.SingleAss(in.Assignee.Var(q), p)(p.info))
+        case _ => None
+      }).toVector
+
+      // p1' := p1; ... ; pn' := pn
+      val argInits = argsWithSubs.flatMap{
+        case (p, Some(q)) => Some(in.SingleAss(in.Assignee.Var(q), p)(p.info))
+        case _ => None
+      }
+
+      // r1 := r1'; .... rn := rn'
+      val resultAssignments =
+        returnsWithSubs.flatMap{
+          case (p, Some(v)) => Some(in.SingleAss(in.Assignee.Var(p), v)(fsrc))
+          case _ => None
+        } // :+ in.Return()(fsrc)
+
+      // create context for body translation
+      val ctx = new FunctionContext(assignReturns)
+
+      // extent context
+      (decl.receiver, recvWithSubs) match {
+        case (PNamedReceiver(id, _, _), (_, Some(q))) => ctx.addSubst(id, q)
+        case _ =>
+      }
+
+      (decl.args zip argsWithSubs).foreach{
+        case (NoGhost(PNamedParameter(id, _)), (_, Some(q))) => ctx.addSubst(id, q)
+        case _ =>
+      }
+
+      (decl.result.outs zip returnsWithSubs).foreach{
+        case (NoGhost(PNamedParameter(id, _)), (_, Some(q))) => ctx.addSubst(id, q)
+        case (NoGhost(_: PUnnamedParameter), (_, Some(q))) => violation("cannot have an alias for an unnamed parameter")
+        case _ =>
+      }
+
+
+      val bodyOpt = decl.body.map{ case (_, s) =>
+        val vars = recvSub.toVector ++ argSubs.flatten ++ returnSubs.flatten
+        val body = recvInits ++ argInits ++ Vector(blockD(ctx)(s)) ++ resultAssignments
+        in.Block(vars, body)(meta(s))
       }
 
       in.PureMethod(recv, name, args, returns, pres, posts, bodyOpt)(fsrc)
@@ -1422,6 +1535,8 @@ object Desugar {
           wthn <- go(thn)
           wels <- go(els)
         } yield in.Conditional(wcond, wthn, wels, typ)(src)
+
+        // todo letin
 
         case PForall(vars, triggers, body) =>
           for { (newVars, newTriggers, newBody) <- quantifierD(ctx)(vars, triggers, body)(exprD) }

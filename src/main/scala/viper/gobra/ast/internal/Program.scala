@@ -65,7 +65,7 @@ case class PureMethod(
                        results: Vector[Parameter.Out],
                        pres: Vector[Assertion],
                        posts: Vector[Assertion],
-                       body: Option[Expr]
+                       body: Option[Block]
                      )(val info: Source.Parser.Info) extends Member {
   require(results.size <= 1)
 }
@@ -85,7 +85,7 @@ case class PureFunction(
                          results: Vector[Parameter.Out],
                          pres: Vector[Assertion],
                          posts: Vector[Assertion],
-                         body: Option[Expr]
+                         body: Option[Block]
                        )(val info: Source.Parser.Info) extends Member {
   require(results.size <= 1)
 }
@@ -232,6 +232,8 @@ case class Unfolding(acc: Access, in: Expr)(val info: Source.Parser.Info) extend
 case class Old(operand: Expr, typ: Type)(val info: Source.Parser.Info) extends Expr
 
 case class Conditional(cond: Expr, thn: Expr, els: Expr, typ: Type)(val info: Source.Parser.Info) extends Expr
+
+case class LetIn(ass: SingleAss,expr: Expr, typ: Type)(val info: Source.Parser.Info) extends Expr
 
 case class Trigger(exprs: Vector[Expr])(val info: Source.Parser.Info) extends Node
 

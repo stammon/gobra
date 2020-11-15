@@ -92,6 +92,7 @@ object Nodes {
         case EqCmp(l, r) => Seq(l, r)
         case Old(op, _) => Seq(op)
         case Conditional(cond, thn, els, _) => Seq(cond, thn, els)
+        // todo letin
         case l: Lit => l match {
           case IntLit(_) => Seq()
           case BoolLit(_) => Seq()

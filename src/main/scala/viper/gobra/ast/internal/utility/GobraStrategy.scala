@@ -24,9 +24,9 @@ object GobraStrategy {
         // Members
       case (p: Program, Seq(t: Vector[TopType@unchecked], m: Vector[Member@unchecked])) => Program(t, m, p.table)(meta)
       case (m: Method, Seq(rec: Parameter.In, name: MethodProxy, arg: Vector[Parameter.In@unchecked], res: Vector[Parameter.Out@unchecked], pre: Vector[Assertion@unchecked], post: Vector[Assertion@unchecked], b: Option[Block@unchecked])) => Method(rec, name, arg, res, pre, post, b)(meta)
-      case (m: PureMethod, Seq(rec: Parameter.In, name: MethodProxy, arg: Vector[Parameter.In@unchecked], res: Vector[Parameter.Out@unchecked], pre: Vector[Assertion@unchecked], post: Vector[Assertion@unchecked], b: Option[Expr@unchecked])) => PureMethod(rec, name, arg, res, pre, post, b)(meta)
+      case (m: PureMethod, Seq(rec: Parameter.In, name: MethodProxy, arg: Vector[Parameter.In@unchecked], res: Vector[Parameter.Out@unchecked], pre: Vector[Assertion@unchecked], post: Vector[Assertion@unchecked], b: Option[Block@unchecked])) => PureMethod(rec, name, arg, res, pre, post, b)(meta)
       case (f: Function, Seq(name: FunctionProxy, arg: Vector[Parameter.In@unchecked], res: Vector[Parameter.Out@unchecked], pre: Vector[Assertion@unchecked], post: Vector[Assertion@unchecked], b: Option[Block@unchecked])) => Function(name, arg, res, pre, post, b)(meta)
-      case (f: PureFunction, Seq(name: FunctionProxy, arg: Vector[Parameter.In@unchecked], res: Vector[Parameter.Out@unchecked], pre: Vector[Assertion@unchecked], post: Vector[Assertion@unchecked], b: Option[Expr@unchecked])) => PureFunction(name, arg, res, pre, post, b)(meta)
+      case (f: PureFunction, Seq(name: FunctionProxy, arg: Vector[Parameter.In@unchecked], res: Vector[Parameter.Out@unchecked], pre: Vector[Assertion@unchecked], post: Vector[Assertion@unchecked], b: Option[Block@unchecked])) => PureFunction(name, arg, res, pre, post, b)(meta)
       case (p: MPredicate, Seq(recv: Parameter.In, name: MPredicateProxy, args: Vector[Parameter.In@unchecked], b: Option[Assertion@unchecked])) => MPredicate(recv, name, args, b)(meta)
       case (p: FPredicate, Seq(name: FPredicateProxy, args: Vector[Parameter.In@unchecked], b: Option[Assertion@unchecked])) => FPredicate(name, args, b)(meta)
       case (f: Field, Seq()) => Field(f.name, f.typ, f.ghost)(meta)
@@ -107,6 +107,7 @@ object GobraStrategy {
       case (_: OptionGet, Seq(op : Expr)) => OptionGet(op)(meta)
       case (e: Old, Seq(op: Expr)) => Old(op, e.typ)(meta)
       case (c: Conditional, Seq(cond: Expr, thn: Expr, els: Expr)) => Conditional(cond, thn, els, c.typ)(meta)
+      // todo letin
       case (i: IntLit, Seq()) => IntLit(i.v)(meta)
       case (b: BoolLit, Seq()) => BoolLit(b.b)(meta)
       case (n: NilLit, Seq()) => NilLit(n.typ)(meta)

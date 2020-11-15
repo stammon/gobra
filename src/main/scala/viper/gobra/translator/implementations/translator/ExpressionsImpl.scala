@@ -79,6 +79,21 @@ class ExpressionsImpl extends Expressions {
           vels <- goE(els)
         } yield vpr.CondExp(vcond, vthn, vels)(pos, info, errT)
 
+      case in.LetIn(in.SingleAss(assg,init),body,_) => {
+        assg.op match {
+          case varb @ in.LocalVar(id,typ) => {
+            val (pos2,info2,errt2) = varb.vprMeta
+            for {
+              vInit <- goE(init)
+              vBody <- goE(body)
+              vAss = vpr.LocalVarDecl(id,vInit.typ)(pos2,info2,errt2)
+            } yield vpr.Let(vAss,vInit,vBody)(pos,info,errT)
+          }
+          case _ => Violation.violation(s"Assignee ${assg.op} is not a valid assignee in a let in expression")
+        }
+      }
+      // todo letin
+
       case in.PureForall(vars, triggers, body) => for {
         (newVars, newTriggers, newBody) <- quantifier(vars, triggers, body)(ctx)
         newForall = vpr.Forall(newVars, newTriggers, newBody)(pos, info, errT).autoTrigger
