@@ -114,8 +114,9 @@ class PureMethodsImpl extends PureMethods {
         case in.Return() => {
           val rt = genReturnTag()
           val oldRt = returnVar
+          val cassg = new cAssg(rt, computePath(path), in.BoolLit(false)(finfo), oldRt)
           returnVar = rt
-          Vector(new cAssg(rt, path, in.BoolLit(false)(finfo), oldRt))
+          Vector(cassg)
         }
         case in.Unfold(utacc) => {
           val acc = goAccess(utacc) // todo goAccess could not work since we didn't cover it in Unfoldin in
