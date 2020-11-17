@@ -10,7 +10,6 @@ import viper.gobra.ast.{internal => in}
 import viper.gobra.translator.interfaces.translator.PureMethods
 import viper.gobra.translator.interfaces.{Collector, Context}
 import viper.silver.{ast => vpr}
-import viper.gobra.reporting.Source.Parser
 import viper.gobra.util.Violation
 import viper.gobra.theory.Addressability.Exclusive
 // import viper.gobra.ast.internal.transform.OverflowChecksTransform
@@ -36,28 +35,30 @@ class PureMethodsImpl extends PureMethods {
     class cAssg(val v: in.LocalVar, val cnd: Vector[in.Expr], val newval: in.Expr, val oldval: in.Expr) extends pstmt
     class uAssg(val v: in.LocalVar, val newval: in.Expr) extends pstmt
 
+    val finfo = x.info
+
     var vars: Map[String, in.Expr] = Map()
     var predFolding: Map[in.PredicateAccess, in.Expr] = Map()
-    var returnVar: in.Expr = in.BoolLit(true)(Parser.Internal)
+    var returnVar: in.Expr = in.BoolLit(true)(finfo)
     def setVar(s: String, v: in.Expr) = vars += (s -> v)
     def getVar(s: String): in.Expr = (vars get s).get
 
     var vartagCounter = 0
     def genVartag(s: String, typ: in.Type): in.LocalVar = {
       vartagCounter += 1
-      in.LocalVar(s"localvar_$s" + s"_$vartagCounter", typ)(Parser.Internal)
+      in.LocalVar(s"localvar_$s" + s"_$vartagCounter", typ)(finfo)
     }
     def genReturnTag(): in.LocalVar = {
       vartagCounter += 1
-      in.LocalVar(s"returnvar_$vartagCounter", in.BoolT(Exclusive))(Parser.Internal)
+      in.LocalVar(s"returnvar_$vartagCounter", in.BoolT(Exclusive))(finfo)
     }
 
-    def neg(b: in.Expr): in.Expr = in.Negation(b)(Parser.Internal)
+    def neg(b: in.Expr): in.Expr = in.Negation(b)(finfo)
     def andConditions(c: Vector[in.Expr]): in.Expr = {
       if (c.isEmpty) {
-        return in.BoolLit(true)(Parser.Internal)
+        return in.BoolLit(true)(finfo)
       }
-      c.reduce((a, b) => in.And(a, b)(Parser.Internal))
+      c.reduce((a, b) => in.And(a, b)(finfo))
     }
 
 
@@ -67,11 +68,11 @@ class PureMethodsImpl extends PureMethods {
       x match {
         case in.Block(decls, stmts) => {
           def f(b: in.BlockDeclaration): pstmt =
-            b match {
+            b match {  // todo do declarations even need to be assigned a default value? or is it handled by the desugarer?
               case in.LocalVar(id, typ) => {
                 val vn = genVartag(id, typ)
                 setVar(id, vn)
-                new uAssg(vn, in.DfltVal(typ)(Parser.Internal))
+                new uAssg(vn, in.DfltVal(typ)(finfo))
               }
             }
           decls.map { f } ++ stmts.map(goStmt(_, path)).flatten
@@ -116,7 +117,7 @@ class PureMethodsImpl extends PureMethods {
           val rt = genReturnTag()
           val oldRt = returnVar
           returnVar = rt
-          Vector(new cAssg(rt, path, in.BoolLit(false)(Parser.Internal), oldRt))
+          Vector(new cAssg(rt, path, in.BoolLit(false)(finfo), oldRt))
         }
         case in.Unfold(utacc) => {
           val acc = goAccess(utacc) // todo goAccess could not work since we didn't cover it in Unfoldin in
@@ -128,10 +129,10 @@ class PureMethodsImpl extends PureMethods {
                 // todo assert predicate not already unfolded
                 predFolding+=(op-> in.Conditional(
                   andConditions(computePath(path)),
-                  in.BoolLit(true)(Parser.Internal),
+                  in.BoolLit(true)(finfo),
                   predFolding.get(op).get,
                   in.BoolT(Exclusive)
-                )(Parser.Internal))
+                )(finfo))
               } else {
                 predFolding+=(op->andConditions(computePath(path)))
               }
@@ -151,10 +152,10 @@ class PureMethodsImpl extends PureMethods {
                 // todo assert all predicates are folded back in the end?
                 predFolding+=(op-> in.Conditional(
                   andConditions(computePath(path)),
-                  in.BoolLit(false)(Parser.Internal),
+                  in.BoolLit(false)(finfo),
                   predFolding.get(op).get,
                   in.BoolT(Exclusive)
-                )(Parser.Internal))
+                )(finfo))
               } else {
                 predFolding+=(op->neg(andConditions(computePath(path))))
               }
@@ -180,108 +181,108 @@ class PureMethodsImpl extends PureMethods {
     def goAccess(x: in.Access): in.Access =
       in.Access(x.e match {
         case in.Accessible.Address(op) => in.Accessible.Address(goExpr[in.Location](op))
-        case in.Accessible.Predicate(op) =>
+        case y @ in.Accessible.Predicate(op) =>
           in.Accessible.Predicate((op match {
             case in.FPredicateAccess(pred, args)       => in.FPredicateAccess(pred, args.map(goExpr)) _
             case in.MPredicateAccess(recv, pred, args) => in.MPredicateAccess(goExpr(recv), pred, args.map(goExpr)) _
             case in.MemoryPredicateAccess(arg)         => in.MemoryPredicateAccess(goExpr(arg)) _
-          })(Parser.Internal))
-      })(Parser.Internal)
+          })(y.info))
+      })(x.info)
     def goE(x:in.Expr):in.Expr = {
       predFolding.foldLeft(goExpr(x))((exp,pair)=>{
         val (pred,isfolded) = pair
         in.Conditional(
           isfolded ,
-          in.Unfolding(in.Access(in.Accessible.Predicate(pred))(Parser.Internal),exp)(Parser.Internal),
+          in.Unfolding(in.Access(in.Accessible.Predicate(pred))(finfo),exp)(finfo),
           exp,
           exp.typ
-          )(Parser.Internal)
+          )(finfo)
       })
     }
     def goExpr[E <: in.Expr](x: E): E = {
       println("####", x, x.getClass())
       val result = x match {
-        case in.LessCmp(l, r)               => in.LessCmp(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.AtMostCmp(l, r)             => in.AtMostCmp(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.GreaterCmp(l, r)            => in.GreaterCmp(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.AtLeastCmp(l, r)            => in.AtLeastCmp(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.EqCmp(l, r)                 => in.EqCmp(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.UneqCmp(l, r)               => in.UneqCmp(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Negation(b)                 => in.Negation(goExpr(b))(Parser.Internal)
-        case in.And(l, r)                   => in.And(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Or(l, r)                    => in.Or(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Add(l, r)                   => in.Add(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Sub(l, r)                   => in.Sub(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Mul(l, r)                   => in.Mul(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Div(l, r)                   => in.Div(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Mod(l, r)                   => in.Mod(goExpr(l), goExpr(r))(Parser.Internal)
-        case in.Cardinality(exp)            => in.Cardinality(goExpr(exp))(Parser.Internal)
-        case in.Contains(left, right)       => in.Contains(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.Intersection(left, right)   => in.Intersection(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.Length(exp)                 => in.Length(goExpr(exp))(Parser.Internal)
-        case in.Multiplicity(left, right)   => in.Multiplicity(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.MultisetConversion(expr)    => in.MultisetConversion(goExpr(expr))(Parser.Internal)
-        case in.OptionGet(exp)              => in.OptionGet(goExpr(exp))(Parser.Internal)
+        case y @ in.LessCmp(l, r)               => in.LessCmp(goExpr(l), goExpr(r))(y.info)
+        case y @ in.AtMostCmp(l, r)             => in.AtMostCmp(goExpr(l), goExpr(r))(y.info)
+        case y @ in.GreaterCmp(l, r)            => in.GreaterCmp(goExpr(l), goExpr(r))(y.info)
+        case y @ in.AtLeastCmp(l, r)            => in.AtLeastCmp(goExpr(l), goExpr(r))(y.info)
+        case y @ in.EqCmp(l, r)                 => in.EqCmp(goExpr(l), goExpr(r))(y.info)
+        case y @ in.UneqCmp(l, r)               => in.UneqCmp(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Negation(b)                 => in.Negation(goExpr(b))(y.info)
+        case y @ in.And(l, r)                   => in.And(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Or(l, r)                    => in.Or(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Add(l, r)                   => in.Add(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Sub(l, r)                   => in.Sub(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Mul(l, r)                   => in.Mul(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Div(l, r)                   => in.Div(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Mod(l, r)                   => in.Mod(goExpr(l), goExpr(r))(y.info)
+        case y @ in.Cardinality(exp)            => in.Cardinality(goExpr(exp))(y.info)
+        case y @ in.Contains(left, right)       => in.Contains(goExpr(left), goExpr(right))(y.info)
+        case y @ in.Intersection(left, right)   => in.Intersection(goExpr(left), goExpr(right))(y.info)
+        case y @ in.Length(exp)                 => in.Length(goExpr(exp))(y.info)
+        case y @ in.Multiplicity(left, right)   => in.Multiplicity(goExpr(left), goExpr(right))(y.info)
+        case y @ in.MultisetConversion(expr)    => in.MultisetConversion(goExpr(expr))(y.info)
+        case y @ in.OptionGet(exp)              => in.OptionGet(goExpr(exp))(y.info)
         case n: in.OptionNone               => n
-        case in.OptionSome(exp)             => in.OptionSome(goExpr(exp))(Parser.Internal)
-        case in.RangeSequence(low, high)    => in.RangeSequence(goExpr(low), goExpr(high))(Parser.Internal)
-        case in.SequenceAppend(left, right) => in.SequenceAppend(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.SequenceConversion(expr)    => in.SequenceConversion(goExpr(expr))(Parser.Internal)
-        case in.SequenceDrop(left, right)   => in.SequenceDrop(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.SequenceTake(left, right)   => in.SequenceTake(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.SetConversion(expr)         => in.SetConversion(goExpr(expr))(Parser.Internal)
-        case in.SetMinus(left, right)       => in.SetMinus(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.Subset(left, right)         => in.Subset(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.Union(left, right) =>
-          in.Union(goExpr(left), goExpr(right))(Parser.Internal)
-        case in.ArrayUpdate(base, left, right) =>
-          in.ArrayUpdate(goExpr(base), goExpr(left), goExpr(right))(Parser.Internal)
-        case in.SequenceUpdate(base, left, right) =>
-          in.SequenceUpdate(goExpr(base), goExpr(left), goExpr(right))(Parser.Internal)
-        case in.StructUpdate(base, field, newVal) =>
-          in.StructUpdate(goExpr(base), field, goExpr(newVal))(Parser.Internal)
+        case y @ in.OptionSome(exp)             => in.OptionSome(goExpr(exp))(y.info)
+        case y @ in.RangeSequence(low, high)    => in.RangeSequence(goExpr(low), goExpr(high))(y.info)
+        case y @ in.SequenceAppend(left, right) => in.SequenceAppend(goExpr(left), goExpr(right))(y.info)
+        case y @ in.SequenceConversion(expr)    => in.SequenceConversion(goExpr(expr))(y.info)
+        case y @ in.SequenceDrop(left, right)   => in.SequenceDrop(goExpr(left), goExpr(right))(y.info)
+        case y @ in.SequenceTake(left, right)   => in.SequenceTake(goExpr(left), goExpr(right))(y.info)
+        case y @ in.SetConversion(expr)         => in.SetConversion(goExpr(expr))(y.info)
+        case y @ in.SetMinus(left, right)       => in.SetMinus(goExpr(left), goExpr(right))(y.info)
+        case y @ in.Subset(left, right)         => in.Subset(goExpr(left), goExpr(right))(y.info)
+        case y @ in.Union(left, right) =>
+          in.Union(goExpr(left), goExpr(right))(y.info)
+        case y @ in.ArrayUpdate(base, left, right) =>
+          in.ArrayUpdate(goExpr(base), goExpr(left), goExpr(right))(y.info)
+        case y @ in.SequenceUpdate(base, left, right) =>
+          in.SequenceUpdate(goExpr(base), goExpr(left), goExpr(right))(y.info)
+        case y @ in.StructUpdate(base, field, newVal) =>
+          in.StructUpdate(goExpr(base), field, goExpr(newVal))(y.info)
         case l: in.BoolLit                     => l
         case l: in.IntLit                      => l
         case l: in.NilLit                      => l
-        case in.ArrayLit(memberType, exprs)    => in.ArrayLit(memberType, exprs.map(goExpr))(Parser.Internal)
-        case in.MultisetLit(memberType, exprs) => in.MultisetLit(memberType, exprs.map(goExpr))(Parser.Internal)
-        case in.SequenceLit(memberType, exprs) => in.SequenceLit(memberType, exprs.map(goExpr))(Parser.Internal)
-        case in.SetLit(memberType, exprs)      => in.SetLit(memberType, exprs.map(goExpr))(Parser.Internal)
-        case in.StructLit(typ, args)           => in.StructLit(typ, args.map(goExpr))(Parser.Internal)
+        case y @ in.ArrayLit(memberType, exprs)    => in.ArrayLit(memberType, exprs.map(goExpr))(y.info)
+        case y @ in.MultisetLit(memberType, exprs) => in.MultisetLit(memberType, exprs.map(goExpr))(y.info)
+        case y @ in.SequenceLit(memberType, exprs) => in.SequenceLit(memberType, exprs.map(goExpr))(y.info)
+        case y @ in.SetLit(memberType, exprs)      => in.SetLit(memberType, exprs.map(goExpr))(y.info)
+        case y @ in.StructLit(typ, args)           => in.StructLit(typ, args.map(goExpr))(y.info)
 
         case d: in.DfltVal                    => d
         case v: in.GlobalConst.Val            => v
-        case in.Ref(in.Addressable.Var(v), _) => in.Ref(v)(Parser.Internal) // Todo does this even make sense
-        case in.Ref(in.Addressable.Index(in.IndexedExp(base, index)), _) =>
-          in.Ref(in.IndexedExp(goExpr(base), goExpr(index))(Parser.Internal))(Parser.Internal)
-        case in.Ref(in.Addressable.Field(in.FieldRef(recv, field)), _) =>
-          in.Ref(in.FieldRef(goExpr(recv), field)(Parser.Internal))(Parser.Internal)
-        case in.Ref(in.Addressable.Pointer(in.Deref(exp, ptyp)), _) =>
-          in.Ref(in.Deref(goExpr(exp), ptyp)(Parser.Internal))(Parser.Internal)
-        case in.Tuple(x) => in.Tuple(x.map(goExpr))(Parser.Internal)
+        case y @ in.Ref(in.Addressable.Var(v), _) => in.Ref(v)(y.info) // Todo does this even make sense
+        case y @ in.Ref(in.Addressable.Index( idxExp @ in.IndexedExp(base, index)), _) =>
+          in.Ref(in.IndexedExp(goExpr(base), goExpr(index))(idxExp.info))(y.info)
+        case y @ in.Ref(in.Addressable.Field(frExp @ in.FieldRef(recv, field)), _) =>
+          in.Ref(in.FieldRef(goExpr(recv), field)(frExp.info))(y.info)
+        case y @ in.Ref(in.Addressable.Pointer(drExp @ in.Deref(exp, ptyp)), _) =>
+          in.Ref(in.Deref(goExpr(exp), ptyp)(drExp.info))(y.info)
+        case y @ in.Tuple(x) => in.Tuple(x.map(goExpr))(y.info)
 
-        case in.LetIn(in.SingleAss(left, right), expr, typ) =>
-          in.LetIn(in.SingleAss(left, goExpr(right))(Parser.Internal), goExpr(expr), typ)(
-            Parser.Internal
-          ) // Todo make newly created variable to be renamed
+        case y @ in.LetIn(assg @ in.SingleAss(left, right), expr, typ) =>
+          in.LetIn(in.SingleAss(left, goExpr(right))(assg.info), goExpr(expr), typ)(
+y.info
+          ) // Todo make newly created variable to be checked, that it's name doesn't already exist
 
-        case in.Conditional(cond, thn, els, typ) =>
-          in.Conditional(goExpr(cond), goExpr(thn), goExpr(els), typ)(Parser.Internal)
+        case y @ in.Conditional(cond, thn, els, typ) =>
+          in.Conditional(goExpr(cond), goExpr(thn), goExpr(els), typ)(y.info)
 
-        case u @ in.Unfolding(acc, in) => u.copy(goAccess(acc), goExpr(in))(Parser.Internal)
+        case u @ in.Unfolding(acc, in) => u.copy(goAccess(acc), goExpr(in))(u.info)
 
         case in.LocalVar(id, typ)       => getVar(id)
-        case in.IndexedExp(base, index) => in.IndexedExp(goExpr(base), goExpr(index))(Parser.Internal)
-        case in.FieldRef(recv, field)   => in.FieldRef(goExpr(recv), field)(Parser.Internal)
-        case in.Deref(exp, typ)         => in.Deref(goExpr(exp), typ)(Parser.Internal)
+        case y @ in.IndexedExp(base, index) => in.IndexedExp(goExpr(base), goExpr(index))(y.info)
+        case y @ in.FieldRef(recv, field)   => in.FieldRef(goExpr(recv), field)(y.info)
+        case y @ in.Deref(exp, typ)         => in.Deref(goExpr(exp), typ)(y.info)
         case i: in.Parameter.In         => i
         case o: in.Parameter.Out        => o
 
-        case in.PureFunctionCall(func, args, typ) =>
-          in.PureFunctionCall(func, args.map(goExpr), typ)(Parser.Internal)
+        case y @ in.PureFunctionCall(func, args, typ) =>
+          in.PureFunctionCall(func, args.map(goExpr), typ)(y.info)
 
-        case in.PureMethodCall(recv, meth, args, typ) =>
-          in.PureMethodCall(goExpr(recv), meth, args.map(goExpr), typ)(Parser.Internal)
+        case y @ in.PureMethodCall(recv, meth, args, typ) =>
+          in.PureMethodCall(goExpr(recv), meth, args.map(goExpr), typ)(y.info)
 
         case in.Old(_, _) | in.PureForall(_, _, _) | in.Exists(_, _, _) | in.BoundVar(_, _) =>
           Violation.violation(s"Expression $x not supported in expression in pure function")
@@ -292,15 +293,15 @@ class PureMethodsImpl extends PureMethods {
     def encodePstmt(stmt: pstmt, e: in.Expr): in.Expr = {
       val ex = stmt match {
         case u: uAssg => u.newval
-        case c: cAssg => in.Conditional(andConditions(c.cnd), c.newval, c.oldval, c.newval.typ)(Parser.Internal)
+        case c: cAssg => in.Conditional(andConditions(c.cnd), c.newval, c.oldval, c.newval.typ)(finfo)
       }
-      in.LetIn(in.SingleAss(in.Assignee(stmt.v), ex)(Parser.Internal), e, e.typ)(Parser.Internal)
+      in.LetIn(in.SingleAss(in.Assignee(stmt.v), ex)(finfo), e, e.typ)(finfo)
     }
     def optimizePstmt(stmt: pstmt): pstmt =
       stmt match {
         case u: uAssg => u
         case c: cAssg => {
-          if (c.cnd == Vector(in.BoolLit(true)(Parser.Internal)) || c.cnd == Vector()) {
+          if (c.cnd == Vector(in.BoolLit(true)(finfo)) || c.cnd == Vector()) {
             println("optimizing true path condition", c)
             return new uAssg(c.v, c.newval)
           }
@@ -309,7 +310,7 @@ class PureMethodsImpl extends PureMethods {
         }
       }
     args.foreach(a => setVar(a.id, a))
-    res.foreach(a => setVar(a.id, in.DfltVal(a.typ)(Parser.Internal)))
+    res.foreach(a => setVar(a.id, in.DfltVal(a.typ)(finfo)))
 
     val pstmts = goStmt(x, Vector())
     println("##########")
