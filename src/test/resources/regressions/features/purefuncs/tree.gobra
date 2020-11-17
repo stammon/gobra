@@ -1,0 +1,83 @@
+package pkg;
+
+type Tree struct {
+    val int
+    left *Tree
+    right *Tree
+}
+
+pred accBt(self *Tree){
+    acc(&self.val) && acc(&self.left) && acc(&self.right) &&
+    (self.left!=nil ==> accBt(self.left)) &&
+    (self.right!=nil ==> accBt(self.right))
+}
+
+// requires t != nil ==> accBt(t)
+pure func isEmpty(t *Tree)(res bool){
+    return (t==nil)
+}
+/*
+requires t != nil ==> accBt(t)
+pure func size(t *Tree)(res int){
+    if isEmpty(t){
+        return 0
+    }
+    sz := 1
+    unfold accBt(t)
+    sz += size(t.left)
+    sz += size(t.right)
+    return sz
+}
+
+requires t != nil ==> accBt(t)
+pure func has(t *Tree,needle int)(res bool){
+    if isEmpty(t){
+        return false
+    }
+    unfold accBt(t)
+    hs := (t.val==needle)
+    hs = hs || has(t.left,needle)
+    hs = hs || has(t.right,needle)
+    return hs
+}
+*/
+
+requires t != nil ==> accBt(t)
+pure func count(t *Tree,needle int)(res int){
+    if isEmpty(t){
+        return 0
+    }
+    unfold accBt(t)
+    cnt := 0
+    if t.val==needle {
+        cnt += 1
+    }
+    cnt += count(t.left,needle)
+    cnt += count(t.right,needle)
+    return cnt
+}
+
+requires tr != nil ==> accBt(tr)
+pure func count2(tr *Tree,needle int)(res int){
+    t := tr
+    if isEmpty(t){
+        return 0
+    }
+    unfold accBt(t)
+    cnt := 0
+    if t.val==needle {
+        cnt += 1
+    }
+    cnt += count2(t.left,needle)
+    cnt += count2(t.right,needle)
+    return cnt
+}
+
+/*
+pred Bst(self *Tree){
+    (self.left!=nil ==> self.left.val < self.val) &&
+    (self.right!=nil ==> self.right.val > self.val) &&
+    (self.left!=nil ==> Bst(self.left)) &&
+    (self.right!=nil ==> Bst(self.right))
+}
+*/

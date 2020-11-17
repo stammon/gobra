@@ -1,0 +1,29 @@
+package pkg;
+
+ensures (const1() == 7)
+pure func const1()(int){
+    return 3 + 4
+}
+
+
+ensures res == 7
+pure func const2()(res int){
+    return 3 + 4
+}
+
+
+ensures const3()==5
+pure func const3()(int){
+    return 5
+}
+
+
+ensures const3()==5
+pure func checkConst3()(bool){
+    return true
+}
+
+ensures res==4
+pure func twoArgs(a, b int) (res int) {
+    return 4
+}

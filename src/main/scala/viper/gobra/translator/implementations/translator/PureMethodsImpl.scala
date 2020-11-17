@@ -37,14 +37,10 @@ class PureMethodsImpl extends PureMethods {
     class uAssg(val v: in.LocalVar, val newval: in.Expr) extends pstmt
 
     var vars: Map[String, in.Expr] = Map()
-    def setVar(s: String, v: in.Expr) { vars += (s -> v) }
-    def getVar(s: String): in.Expr = {
-      if (vars.get(s) == Option.empty) {
-        println("doesn't have s")
-      }
-      (vars get s).get
-    }
+    var predFolding: Map[in.PredicateAccess, in.Expr] = Map()
     var returnVar: in.Expr = in.BoolLit(true)(Parser.Internal)
+    def setVar(s: String, v: in.Expr) = vars += (s -> v)
+    def getVar(s: String): in.Expr = (vars get s).get
 
     var vartagCounter = 0
     def genVartag(s: String, typ: in.Type): in.LocalVar = {
@@ -63,6 +59,9 @@ class PureMethodsImpl extends PureMethods {
       }
       c.reduce((a, b) => in.And(a, b)(Parser.Internal))
     }
+
+
+    def computePath(p:Vector[in.Expr]):Vector[in.Expr] = returnVar +: p
 
     def goStmt(x: in.Stmt, path: Vector[in.Expr]): Vector[pstmt] =
       x match {
@@ -83,7 +82,7 @@ class PureMethodsImpl extends PureMethods {
         }
 
         case in.If(cond, thn, els) => {
-          val eCond = goExpr(cond)
+          val eCond = goE(cond)
           val eThn = goStmt(thn, path :+ eCond)
           val eEls = goStmt(els, path :+ neg(eCond))
           eThn ++ eEls
@@ -93,20 +92,20 @@ class PureMethodsImpl extends PureMethods {
           assignee match {
             //case in.Assignee.Var(v) => {
             case in.Assignee.Var(v: in.LocalVar) => {
-              val eExpr = goExpr(expr)
+              val eExpr = goE(expr)
               val oldVn = getVar(v.id)
               //val vn = genVartag(v.id, eExpr.typ)
               val vn = genVartag(v.id, v.typ)
               setVar(v.id, vn)
-              Vector(new cAssg(vn, path :+ returnVar, eExpr, oldVn))
+              Vector(new cAssg(vn, computePath(path), eExpr, oldVn))
             }
             case in.Assignee.Var(v: in.Parameter.Out) => {
-              val eExpr = goExpr(expr)
+              val eExpr = goE(expr)
               val oldVn = getVar(v.id)
               //val vn = genVartag(v.id, eExpr.typ)
               val vn = genVartag(v.id, v.typ)
               setVar(v.id, vn)
-              Vector(new cAssg(vn, path :+ returnVar, eExpr, oldVn))
+              Vector(new cAssg(vn, computePath(path), eExpr, oldVn))
             }
             case _ =>
               Violation.violation(s"Assignee '$assignee' in assignment '$ass' cannot be assigned in a pure function")
@@ -119,12 +118,56 @@ class PureMethodsImpl extends PureMethods {
           returnVar = rt
           Vector(new cAssg(rt, path, in.BoolLit(false)(Parser.Internal), oldRt))
         }
-        // case fold: in.Fold =>
-        // case unfold: in.Unfold =>
+        case in.Unfold(utacc) => {
+          val acc = goAccess(utacc) // todo goAccess could not work since we didn't cover it in Unfoldin in
+          acc.e match {
+            case in.Accessible.Predicate(op) => {
+              println("unfold",op,predFolding.contains(op),predFolding.get(op))
+              println("predfolding",predFolding)
+              if(predFolding.contains(op)){
+                // todo assert predicate not already unfolded
+                predFolding+=(op-> in.Conditional(
+                  andConditions(computePath(path)),
+                  in.BoolLit(true)(Parser.Internal),
+                  predFolding.get(op).get,
+                  in.BoolT(Exclusive)
+                )(Parser.Internal))
+              } else {
+                predFolding+=(op->andConditions(computePath(path)))
+              }
+            }
+            case in.Accessible.Address(op) => Violation.violation("Unfold don't take address")
+          }
+          Vector()
+        }
+        case in.Fold(utacc) => {
+          val acc = goAccess(utacc) // todo goAccess could not work since we didn't cover it in Unfoldin in
+          acc.e match {
+            case in.Accessible.Predicate(op) => {
+              println("fold",op,predFolding.contains(op),predFolding.get(op))
+              println("predfolding",predFolding)
+              if(predFolding.contains(op)){
+                // todo assert predicate unfolded
+                // todo assert all predicates are folded back in the end?
+                predFolding+=(op-> in.Conditional(
+                  andConditions(computePath(path)),
+                  in.BoolLit(false)(Parser.Internal),
+                  predFolding.get(op).get,
+                  in.BoolT(Exclusive)
+                )(Parser.Internal))
+              } else {
+                predFolding+=(op->neg(andConditions(computePath(path))))
+              }
+            }
+            case in.Accessible.Address(op) => Violation.violation("Fold don't take address")
+          }
+          Vector()
+        }
+        
         // case in.While(cond, invs, body) =>
         // case in.FunctionCall(targets, func, args) =>
         // case in.MethodCall(targets, recv, meth, args) =>
-        case in.Fold(_) | in.Unfold(_) | in.While(_, _, _) | in.FunctionCall(_, _, _) | in.MethodCall(_, _, _, _) =>
+        case in.While(_, _, _) | in.FunctionCall(_, _, _) | in.MethodCall(_, _, _, _) =>
           Violation.violation(s"Statement $x not yet implemented.")
         // case in.Assert(ass) =>
         // case in.Assume(ass) =>
@@ -144,6 +187,17 @@ class PureMethodsImpl extends PureMethods {
             case in.MemoryPredicateAccess(arg)         => in.MemoryPredicateAccess(goExpr(arg)) _
           })(Parser.Internal))
       })(Parser.Internal)
+    def goE(x:in.Expr):in.Expr = {
+      predFolding.foldLeft(goExpr(x))((exp,pair)=>{
+        val (pred,isfolded) = pair
+        in.Conditional(
+          isfolded ,
+          in.Unfolding(in.Access(in.Accessible.Predicate(pred))(Parser.Internal),exp)(Parser.Internal),
+          exp,
+          exp.typ
+          )(Parser.Internal)
+      })
+    }
     def goExpr[E <: in.Expr](x: E): E = {
       println("####", x, x.getClass())
       val result = x match {

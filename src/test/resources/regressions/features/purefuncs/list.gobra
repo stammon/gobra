@@ -5,31 +5,298 @@ type list struct{
 		next *list;
 };
 
-// todo add annotation to show it's wrong
-// pure func sum1(a list) (res int) {
-// 	if a.next == nil {
-// 		return a.val
-// 	}
-// 	return a.val + sum1(*a.next)
-// };
-
 
 pred listAcc(self *list){
 	acc(&self.val) && acc(&self.next) &&
-	((&self.next!=nil) ==> listAcc(self.next))
+	((self.next!=nil) ==> listAcc(self.next))
 }
 
 requires listAcc(a)
 pure func unfoldForMePlease(a *list) (res int){
-	return unfolding listAcc(a) in sum3(a)
+	return unfolding listAcc(a) in sumList1(a)
 }
 
 requires acc(&a.val)
 requires acc(&a.next)
 requires (a.next!=nil) ==> listAcc(a.next)
-pure func sum3(a *list) (res int) {
+pure func sumList1(a *list) (res int) {
 	if a.next == nil {
 		return a.val
 	}
 	return a.val + unfoldForMePlease(a.next)
 };
+
+
+// todo add annotation to show it's wrong since precondition is missing
+// pure func sumListNoAcc(a list) (res int) {
+// 	if a.next == nil {
+// 		return a.val
+// 	}
+// 	return a.val + sumListNoAcc(a.next)
+// };
+
+requires listAcc(a)
+pure func sumList2(a *list) (res int) {
+	unfold listAcc(a)
+	if a.next == nil {
+		return a.val
+	}
+	return a.val + sumList2(a.next)
+};
+
+requires listAcc(a)
+ensures listLength(a) >=1
+ensures unfolding listAcc(a) in ((a.next==nil) == (res==1))
+ensures (unfolding listAcc(a) in (a.next==nil)) == (listLength(a)==1)
+ensures (listLength(a)>=1) == (unfolding listAcc(a) in (a.next!=nil))
+ensures (unfolding listAcc(a) in (a.next!=nil)) ==> (listLength(a)==1 + unfolding listAcc(a) in listLength(a.next))
+pure func listLength(a *list) (res int) {
+	unfold listAcc(a)
+	if a.next == nil {
+		return 1
+	}
+	return 1 + listLength(a.next)
+};
+
+requires listAcc(a)
+requires idx >=0
+requires idx < listLength(a)
+pure func listGet(a *list,idx int) (res int) {
+	unfold listAcc(a)
+	if idx == 0 {
+		return a.val
+	}
+	return listGet(a.next,idx-1)
+};
+
+requires listAcc(a)
+pure func listContains(a *list,needle int) (res bool) {
+	unfold listAcc(a)
+	if a.val == needle {
+		return true
+	}
+	if a.next == nil {
+		return false
+	}
+	return listContains(a.next,needle)
+};
+
+requires listAcc(a)
+pure func listCount(a *list,needle int) (res int) {
+	unfold listAcc(a)
+	count:= 0
+	if a.val == needle {
+		count += 1
+	}
+	if a.next == nil {
+		return 0
+	}
+	return count + listCount(a.next,needle)
+};
+
+/*
+requires a < b
+ensures listAcc(l)
+ensures listLength(l) == b-a
+ensures (unfolding listAcc(l) in l.next!=nil)
+ensures listContains(l,a)==true // a is exclusive
+ensures listContains(l,b)==false // b is exclusive
+// ensures forall x int :: { x } (x>=0 && x<listLength(l)) ==> listContains(l,a+x)
+// ensures forall x int :: { x } (x>=a && x<b) ==> listContains(l,x)
+// ensures forall x int :: { x } (x>=0 && x<listLength(l)) ==> (listGet(l,x)==a+x)
+func genRange(a,b int) (l *list){ 
+	if b-a==1 {
+		val@ := a
+		var next@ *list=nil
+		l@ := &list{val,next}
+		// var l@ (*list) := &list{val,next}
+		assert(acc(&val))
+		assert(acc(&next))
+		assert(acc(l))
+		assert(acc(&l))
+		assert(acc(&l.val))
+		assert(acc(&l.next))
+		assert(l.next==nil)
+		fold listAcc(l)
+		assert(listLength(l)==1)
+		// assert(listGet(l,0)==a)
+		// assert(forall x int :: { listGet(l,x) } ((x>=0 && x<listLength(l)) ==> (listGet(l,x)==a+x)))
+		// assert(forall x int :: { x } ((x>=0 && x<listLength(l)) ==> (listGet(l,x)==a+x)))
+		// assert(forall x int :: { x } ((x>=0 && x<listLength(l)) ==> (listGet(l,x)==a+x)))
+		assert(forall x int :: { x } ((x>=a && x<b) ==> (listGet(l,x-a)==x)))
+		assert(forall x int :: { x } (x>=a && x<b) ==> listContains(l,x))
+		return l
+	}
+	next@ := genRange(a+1,b)
+	assert(b-a>=2)
+	assert(listLength(next)==b-a-1)
+	assert(listLength(next)>=1)
+	assert(next!=nil)
+	// assert(forall x int :: { listContains(next,x) } (x>=a+1 && x<b) ==> listContains(next,x))
+
+	l@ := &list{a,next}
+	assert(l.next!=nil)
+	fold listAcc(l)
+
+	assert(listLength(l)==b-a)
+	assert(listContains(l,a))
+	assert(listContains(l,a+1))
+	// assert(forall x int :: { x } (x>=a+1 && x<b) ==> listContains(l,x))
+	// assert(forall x int :: { x } (x>=a && x<b) ==> listContains(l,x))
+	return l
+}
+*/
+
+
+requires a < b
+requires listAcc(l)
+requires listLength(l) == b-a
+pure func isRange(l *list, a,b int) (res bool){
+	unfold listAcc(l)
+	if l.val!=a {
+		return false
+	}
+	if l.next==nil{
+		return true
+	}
+	return isRange(l.next,a+1,b)
+}
+
+
+requires a < b
+ensures listAcc(l)
+ensures listLength(l) == b-a
+ensures (unfolding listAcc(l) in l.next!=nil)
+ensures listContains(l,a)==true // a is exclusive
+ensures listContains(l,b)==false // b is exclusive
+ensures isRange(l,a,b)
+func genRange(a,b int) (l *list){ 
+	if b-a==1 {
+		val@ := a
+		var next@ *list=nil
+		l@ := &list{val,next}
+		// var l@ (*list) := &list{val,next}
+		assert(acc(&val))
+		assert(acc(&next))
+		assert(acc(l))
+		assert(acc(&l))
+		assert(acc(&l.val))
+		assert(acc(&l.next))
+		assert(l.next==nil)
+		fold listAcc(l)
+		assert(listLength(l)==1)
+		assert(forall x int :: { x } ((x>=a && x<b) ==> (listGet(l,x-a)==x)))
+		assert(forall x int :: { x } (x>=a && x<b) ==> listContains(l,x))
+		return l
+	}
+	next@ := genRange(a+1,b)
+	assert(b-a>=2)
+	assert(listLength(next)==b-a-1)
+	assert(listLength(next)>=1)
+	assert(next!=nil)
+
+	l@ := &list{a,next}
+	assert(l.next!=nil)
+	fold listAcc(l)
+
+	assert(listLength(l)==b-a)
+	assert(listContains(l,a))
+	assert(listContains(l,a+1))
+	return l
+}
+
+requires a < b
+requires listAcc(l)
+requires listLength(l)==b-a
+requires isRange(l,a,b)
+requires x >=0 && x < listLength(l)
+ensures a < b
+ensures listAcc(l)
+ensures listLength(l)==b-a
+ensures isRange(l,a,b)
+ensures x >=0 && x < listLength(l)
+ensures listGet(l,x)==a+x
+func inductionRangeElementValue(l *list, a,b,x int) (){
+	unfold listAcc(l)
+	if l.next!=nil && x!=0{
+		inductionRangeElementValue(l.next,a+1,b,x-1)
+	}
+	fold listAcc(l)
+}
+
+func client1() {
+	l:= genRange(20,40)
+	assert(listGet(l,0)==20)
+	assert(listGet(l,10)==30)
+}
+
+
+requires i > 30
+func client2(i int) {
+	l:= genRange(20,i)
+	inductionRangeElementValue(l,20,i,10)
+	assert(listGet(l,10)==30)
+	inductionRangeElementValue(l,20,i,i-21)
+	assert(listGet(l,i-21)==i-21+20)
+}
+
+
+requires i > 30
+requires j >= 0 && j < i-20
+func client3(i,j int) {
+	l:= genRange(20,i)
+	inductionRangeElementValue(l,20,i,j)
+	assert(listGet(l,j)==j+20)
+}
+
+
+requires a < b
+requires listAcc(l)
+requires listLength(l)==b-a
+requires isRange(l,a,b)
+ensures a < b
+ensures listAcc(l)
+ensures listLength(l)==b-a
+ensures isRange(l,a,b)
+ensures sumList2(l) == ((b*(b-1)/2)) - (a*(a-1)/2)
+func inductionRangeElementSum(l *list, a,b int) (){
+	unfold listAcc(l)
+	if l.next!=nil {
+		inductionRangeElementSum(l.next,a+1,b)
+	}
+	fold listAcc(l)
+}
+
+
+requires a < b
+func client4(a,b int) {
+	l := genRange(a,b)
+	inductionRangeElementSum(l,a,b)
+	assert(sumList2(l)==((b*(b-1)/2)) - (a*(a-1)/2))
+}
+
+/*
+requires a < b
+func client5(a,b int) {
+	l := genRange(a,b)
+	k := l
+	// inductionRangeElementSum(l,a,b)
+	sum := 0
+	curr := a
+
+	invariant listAcc(k)
+	invariant listLength(k)+curr == b
+	invariant curr >=a && curr < b
+	invariant k!=nil ==> ((unfolding listAcc(k) in k.val)==curr)
+	// probably needs some invariant like k == dropFirstNElements(l,curr-a)
+	invariant sum == ((curr*(curr-1)/2)) - (a*(a-1)/2)
+	for k!=nil {
+		unfold listAcc(k)
+		sum += k.val
+		curr += 1
+		k = k.next
+		assert(k!=nil ==> ((unfolding listAcc(k) in k.val)==curr))
+	}
+	assert(sum==((b*(b-1)/2)) - (a*(a-1)/2))
+}
+*/
