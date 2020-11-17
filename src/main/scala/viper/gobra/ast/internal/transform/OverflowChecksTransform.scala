@@ -11,7 +11,6 @@ import viper.gobra.reporting.Source
 import viper.gobra.reporting.Source.Parser.Single
 import viper.gobra.util.TypeBounds.BoundedIntegerKind
 import viper.gobra.util.Violation.violation
-import viper.gobra.reporting.Source.Parser.Internal
 
 /**
   * Adds overflow checks to programs written in Gobra's internal language
@@ -169,7 +168,6 @@ object OverflowChecksTransform extends InternalTransform {
   private def createAnnotatedInfo(info: Source.Parser.Info): Source.Parser.Info =
     info match {
       case s: Single => s.createAnnotatedInfo(OverflowCheckAnnotation)
-      case Internal  => Internal
       case i         => violation(s"l.op.info ($i) is expected to be a Single")
     }
 }
