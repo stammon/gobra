@@ -1,0 +1,61 @@
+// Any copyright is dedicated to the Public Domain.
+// http://creativecommons.org/publicdomain/zero/1.0/
+
+package pkg;
+
+ensures res < 20
+pure func cf1(a int) (res int) {
+    v:=a*2
+    if v % 2 == 0 {
+        if a==1 {
+            return 2
+        }
+        if a % 3 == 0{
+            v = 4
+        } else {
+            v = 7
+        }
+        if a % 5 == 0{
+            return v
+        }
+        if a % 2 == 0{
+            if v == 7 {
+                return 1
+            }
+            return 8
+        }
+    } else {
+        return 100
+    }
+    
+    if a % 9 == 0{
+        return 17
+    } else {
+        if a == 11 {
+            return 5
+        }
+    }
+    return 6
+}
+
+func client(){
+    assert(cf1(1)==2)
+    assert(cf1(2)==1)
+    assert(cf1(3)==6)
+    assert(cf1(4)==1)
+    assert(cf1(5)==7)
+    assert(cf1(6)==8)
+    assert(cf1(7)==6)
+    assert(cf1(8)==1)
+    assert(cf1(9)==17)
+    assert(cf1(10)==7)
+    assert(cf1(11)==5)
+    assert(cf1(12)==8)
+    assert(cf1(13)==6)
+    assert(cf1(14)==1)
+    assert(cf1(15)==4)
+    assert(cf1(16)==1)
+    assert(cf1(17)==6)
+    assert(cf1(18)==8)
+    assert(cf1(19)==6)
+}
