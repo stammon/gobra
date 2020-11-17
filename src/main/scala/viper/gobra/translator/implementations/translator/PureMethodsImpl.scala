@@ -24,8 +24,6 @@ class PureMethodsImpl extends PureMethods {
     */
   override def finalize(col: Collector): Unit = ()
 
-  // todo fold
-
   private def encodeBlockToExpression(
       x: in.Block,
       args: Vector[in.Parameter.In],
