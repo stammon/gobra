@@ -1,0 +1,28 @@
+// Any copyright is dedicated to the Public Domain.
+// http://creativecommons.org/publicdomain/zero/1.0/
+
+package pkg;
+
+ensures res == a + b
+pure func assert1(a, b int) (res int) {
+    if a == b {
+        assert(a==b)
+        return(2*a)
+    }
+    sum := a + b
+    return sum
+    assert(1==2)
+}
+
+
+requires a < b
+pure func assert2(a, b int) (res int) {
+    u:= 10
+    v:= 20
+    assert(u!=v)
+    assert(u<v)
+    if u < a {
+        assert(u < b)
+        return 1
+    }
+}
