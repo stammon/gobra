@@ -125,8 +125,6 @@ class PureMethodsImpl extends PureMethods {
           val acc = goAccess(utacc) // todo goAccess could not work since we didn't cover it in Unfoldin in
           acc.e match {
             case in.Accessible.Predicate(op) => {
-              println("unfold",op,predFolding.contains(op),predFolding.get(op))
-              println("predfolding",predFolding)
               if(predFolding.contains(op)){
                 // todo assert predicate not already unfolded
                 predFolding+=(op-> in.Conditional(
@@ -147,8 +145,6 @@ class PureMethodsImpl extends PureMethods {
           val acc = goAccess(utacc) // todo goAccess could not work since we didn't cover it in Unfoldin in
           acc.e match {
             case in.Accessible.Predicate(op) => {
-              println("fold",op,predFolding.contains(op),predFolding.get(op))
-              println("predfolding",predFolding)
               if(predFolding.contains(op)){
                 // todo assert predicate unfolded
                 // todo assert all predicates are folded back in the end?
@@ -175,7 +171,6 @@ class PureMethodsImpl extends PureMethods {
 
         case a @ in.Assert(assrtn) => {
           val ass = goAssertion(assrtn)
-          println("#### assert",ass)
           Vector(new assrt(ass,computePath(path),a.info))
         }
 
