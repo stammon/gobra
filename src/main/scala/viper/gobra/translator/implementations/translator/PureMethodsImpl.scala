@@ -10,8 +10,9 @@ import viper.gobra.ast.{internal => in}
 import viper.gobra.translator.interfaces.translator.PureMethods
 import viper.gobra.translator.interfaces.{Collector, Context}
 import viper.silver.{ast => vpr}
-import viper.gobra.util.Violation
+import viper.gobra.util.Violation.violation
 import viper.gobra.theory.Addressability.Exclusive
+import viper.gobra.reporting.Source.Parser.Info
 // import viper.gobra.ast.internal.transform.OverflowChecksTransform
 
 class PureMethodsImpl extends PureMethods {
@@ -28,10 +29,13 @@ class PureMethodsImpl extends PureMethods {
       x: in.Block,
       args: Vector[in.Parameter.In],
       res: Vector[in.Parameter.Out]
-  ): in.Expr = {
-    sealed trait pstmt { def v: in.LocalVar }
-    class cAssg(val v: in.LocalVar, val cnd: Vector[in.Expr], val newval: in.Expr, val oldval: in.Expr) extends pstmt
-    class uAssg(val v: in.LocalVar, val newval: in.Expr) extends pstmt
+  ): (in.Expr,Vector[in.Assertion]) = {
+    sealed trait pstmt 
+    sealed trait assg extends pstmt { def v: in.LocalVar }
+    class cAssg(val v: in.LocalVar, val cnd: Vector[in.Expr], val newval: in.Expr, val oldval: in.Expr) extends assg
+    class uAssg(val v: in.LocalVar, val newval: in.Expr) extends assg
+    class assrt(val ass:in.Expr, val info:Info) extends pstmt
+    class ret(val v:in.Expr) extends pstmt
 
     val finfo = x.info
 
@@ -107,7 +111,7 @@ class PureMethodsImpl extends PureMethods {
               Vector(new cAssg(vn, computePath(path), eExpr, oldVn))
             }
             case _ =>
-              Violation.violation(s"Assignee '$assignee' in assignment '$ass' cannot be assigned in a pure function")
+              violation(s"Assignee '$assignee' in assignment '$ass' cannot be assigned in a pure function")
           }
         }
 
@@ -136,7 +140,7 @@ class PureMethodsImpl extends PureMethods {
                 predFolding+=(op->andConditions(computePath(path)))
               }
             }
-            case in.Accessible.Address(op) => Violation.violation("Unfold don't take address")
+            case in.Accessible.Address(op) => violation("Unfold don't take address")
           }
           Vector()
         }
@@ -159,7 +163,7 @@ class PureMethodsImpl extends PureMethods {
                 predFolding+=(op->neg(andConditions(computePath(path))))
               }
             }
-            case in.Accessible.Address(op) => Violation.violation("Fold don't take address")
+            case in.Accessible.Address(op) => violation("Fold don't take address")
           }
           Vector()
         }
@@ -168,16 +172,30 @@ class PureMethodsImpl extends PureMethods {
         // case in.FunctionCall(targets, func, args) =>
         // case in.MethodCall(targets, recv, meth, args) =>
         case in.While(_, _, _) | in.FunctionCall(_, _, _) | in.MethodCall(_, _, _, _) =>
-          Violation.violation(s"Statement $x not yet implemented.")
-        // case in.Assert(ass) =>
+          violation(s"Statement $x not yet implemented.")
+
+        case a @ in.Assert(assrtn) => {
+          val ass = goAssertion(assrtn)
+          Vector(new assrt(ass,a.info))
+        }
+
         // case in.Assume(ass) =>
         // case in.Inhale(ass) =>
         // case in.Exhale(ass) =>
-        case in.Assert(_) | in.Assume(_) | in.Inhale(_) | in.Exhale(_) =>
-          Violation.violation(s"Statement $x not supported in pure function.")
-        case _ => Violation.violation(s"Statement $x did not match with any implemented case.")
+        case in.Assume(_) | in.Inhale(_) | in.Exhale(_) =>
+          violation(s"Statement $x not supported in pure function.")
+        case _ => violation(s"Statement $x did not match with any implemented case.")
       }
-    def goAccess(x: in.Access): in.Access =
+    def goAssertion(x: in.Assertion): in.Expr = {
+      x match {
+        case in.Access(_) =>  violation("Assertions in pure functions cannot contain resource assertions")
+        case y @ in.ExprAssertion(exp) => goE(exp)
+        case y @ in.Implication(left, right) => in.Or(in.Negation(goE(left))(left.info),goAssertion(right))(y.info)
+        case y @ in.SepAnd(left, right) => in.And(goAssertion(left),goAssertion(right))(y.info)
+        case y @ in.SepForall(vars, triggers, body) => violation("Assertions in pure functions cannot contain quantifiers")
+      }
+    }
+    def goAccess(x: in.Access): in.Access = // todo should this be goE or goExpr?
       in.Access(x.e match {
         case in.Accessible.Address(op) => in.Accessible.Address(goExpr[in.Location](op))
         case y @ in.Accessible.Predicate(op) =>
@@ -284,12 +302,12 @@ y.info
           in.PureMethodCall(goExpr(recv), meth, args.map(goExpr), typ)(y.info)
 
         case in.Old(_, _) | in.PureForall(_, _, _) | in.Exists(_, _, _) | in.BoundVar(_, _) =>
-          Violation.violation(s"Expression $x not supported in expression in pure function")
+          violation(s"Expression $x not supported in expression in pure function")
         //case _ => Violation.violation(s"Expression $x ${x.getClass()} did not match with any implemented case.")
       }
       result.asInstanceOf[E]
     }
-    def encodePstmt(stmt: pstmt, e: in.Expr): in.Expr = {
+    def encodeAssg(stmt: assg, e: in.Expr): in.Expr = {
       val ex = stmt match {
         case u: uAssg => u.newval
         case c: cAssg => in.Conditional(andConditions(c.cnd), c.newval, c.oldval, c.newval.typ)(finfo)
@@ -299,6 +317,8 @@ y.info
     def optimizePstmt(stmt: pstmt): pstmt =
       stmt match {
         case u: uAssg => u
+        case a: assrt => a
+        case r: ret => r
         case c: cAssg => {
           if (c.cnd == Vector(in.BoolLit(true)(finfo)) || c.cnd == Vector()) {
             println("optimizing true path condition", c)
@@ -308,22 +328,38 @@ y.info
           c
         }
       }
+      def encodeAssignementList(assgs:Vector[assg],body:in.Expr):in.Expr = {
+
+    assgs.foldRight[in.Expr](body)(encodeAssg(_, _))
+      }
     args.foreach(a => setVar(a.id, a))
     res.foreach(a => setVar(a.id, in.DfltVal(a.typ)(finfo)))
 
-    val pstmts = goStmt(x, Vector())
-    println("##########")
-    pstmts.foreach(_ match {
-      case u: uAssg => println("uAssg", u.v, u.newval)
-      case c: cAssg => println("cassg", c.v, c.cnd, c.newval, c.oldval)
+    val pstmts = goStmt(x, Vector()) :+ new ret(getVar(res.head.id))
+
+    var posts :Vector[in.Assertion]= Vector()
+    var assgs :Vector[assg]= Vector()
+    var result :in.Expr = in.LocalVar("",in.StructT("",Vector(),Exclusive))(finfo)
+
+    pstmts.map(optimizePstmt).foreach((s)=>s match {
+      case r: ret => result = encodeAssignementList(assgs,r.v)
+      case a: assrt => posts :+ in.ExprAssertion(encodeAssignementList(assgs,a.ass))(a.info)
+      case a: assg => assgs :+=a
     })
-    println("##########")
-    val opstmts = pstmts.map(optimizePstmt)
-    println("return id", res.head.id)
-    println("variable", getVar(res.head.id))
-    println("type", getVar(res.head.id).typ)
-    opstmts.foldRight[in.Expr](getVar(res.head.id))(encodePstmt(_, _))
-    //(getVar(res.head.id))
+    (result,posts)
+
+    // println("##########")
+    // pstmts.foreach(_ match {
+    //   case u: uAssg => println("uAssg", u.v, u.newval)
+    //   case c: cAssg => println("cassg", c.v, c.cnd, c.newval, c.oldval)
+    // })
+    // println("##########")
+    // val opstmts = pstmts.map(optimizePstmt)
+    // println("return id", res.head.id)
+    // println("variable", getVar(res.head.id))
+    // println("type", getVar(res.head.id).typ)
+    // //(getVar(res.head.id))
+    // result
   }
 
   override def pureMethod(meth: in.PureMethod)(ctx: Context): MemberWriter[vpr.Function] = {
@@ -346,16 +382,16 @@ y.info
       x.transform { case v: vpr.LocalVar if v.name == meth.results.head => vpr.Result(resultType)() }
     }
 
-    val transformed = meth.body.map(encodeBlockToExpression(_, meth.args :+ meth.receiver, meth.results))
-    // val overflowPosts =
-    //   transformed.map(OverflowChecksTransform.getPureBlockPosts(_, meth.results)).getOrElse((Vector()))
-    // val vOverflowPosts = overflowPosts.map(ctx.ass.postcondition(_)(ctx))
+    val encoded = meth.body.map(encodeBlockToExpression(_, meth.args :+ meth.receiver, meth.results))
+    val transformed = encoded.map((t)=>t._1)
+    val overflowPosts = encoded.map((t)=>t._2).getOrElse(Vector())
+    val vOverflowPosts = overflowPosts.map(ctx.ass.postcondition(_)(ctx))
 
     for {
       pres <- sequence((vRecvPres ++ vArgPres) ++ meth.pres.map(ctx.ass.precondition(_)(ctx)))
       posts <- sequence(
-        //vResultPosts ++ vOverflowPosts ++ meth.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
-        vResultPosts ++ meth.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
+        vResultPosts ++ vOverflowPosts ++ meth.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
+        // vResultPosts ++ meth.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
       )
 
       body <- option(transformed map { b =>
@@ -395,16 +431,16 @@ y.info
       x.transform { case v: vpr.LocalVar if v.name == func.results.head.id => vpr.Result(resultType)() }
     }
 
-    val transformed = func.body.map(encodeBlockToExpression(_, func.args, func.results))
-    // val overflowPosts =
-    //   transformed.map(OverflowChecksTransform.getPureBlockPosts(_, func.results)).getOrElse((Vector()))
-    // val vOverflowPosts = overflowPosts.map(ctx.ass.postcondition(_)(ctx))
+    val encoded = func.body.map(encodeBlockToExpression(_, func.args, func.results))
+    val transformed = encoded.map((t)=>t._1)
+    val overflowPosts = encoded.map((t)=>t._2).getOrElse(Vector())
+    val vOverflowPosts = overflowPosts.map(ctx.ass.postcondition(_)(ctx))
 
     for {
       pres <- sequence(vArgPres ++ func.pres.map(ctx.ass.precondition(_)(ctx)))
       posts <- sequence(
-        //vResultPosts ++ vOverflowPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
-        vResultPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
+        vResultPosts ++ vOverflowPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
+        // vResultPosts ++ func.posts.map(ctx.ass.postcondition(_)(ctx).map(fixResultvar(_)))
       )
 
       body <- option(transformed map { b =>

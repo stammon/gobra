@@ -35,21 +35,11 @@ object OverflowChecksTransform extends InternalTransform {
       // Adds pre-conditions stating the bounds of each argument and a post-condition to check if the body expression
       // overflows
       case f @ PureFunction(name, args, results, pres, posts, body) =>
-        body match {
-          case Some(block) =>
-            val newPost = posts // ++ getPureBlockPosts(block, results) todo
-            PureFunction(name, args, results, pres, newPost, body)(f.info)
-          case None => f
-        }
+            PureFunction(name, args, results, pres, posts, body map computeNewBody)(f.info)
 
       // Same as pure functions
       case m @ PureMethod(receiver, name, args, results, pres, posts, body) =>
-        body match {
-          case Some(block) =>
-            val newPost = posts // ++ getPureBlockPosts(block, results) todo
-            PureMethod(receiver, name, args, results, pres, newPost, body)(m.info)
-          case None => m
-        }
+            PureMethod(receiver, name, args, results, pres, posts, body map computeNewBody)(m.info)
 
       /* As discussed on the Gobra meeting (27/10/2020), overflow checks should not be added to predicates, assertions
        * and any other purely logical (i.e. non-executable code) statements and expressions. This seems to be the approach taken
