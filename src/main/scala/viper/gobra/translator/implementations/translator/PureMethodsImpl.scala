@@ -217,7 +217,6 @@ class PureMethodsImpl extends PureMethods {
       })
     }
     def goExpr[E <: in.Expr](x: E): E = {
-      println("####", x, x.getClass())
       val result = x match {
         case y @ in.LessCmp(l, r)               => in.LessCmp(goExpr(l), goExpr(r))(y.info)
         case y @ in.AtMostCmp(l, r)             => in.AtMostCmp(goExpr(l), goExpr(r))(y.info)
@@ -321,10 +320,8 @@ y.info
         case r: ret => r
         case c: cAssg => {
           if (c.cnd == Vector(in.BoolLit(true)(finfo)) || c.cnd == Vector()) {
-            println("optimizing true path condition", c)
             return new uAssg(c.v, c.newval)
           }
-          println("unoptimized path condition", c.v, c.cnd, c.newval, c.oldval)
           c
         }
       }
@@ -347,19 +344,6 @@ y.info
       case a: assg => assgs :+=a
     })
     (result,posts)
-
-    // println("##########")
-    // pstmts.foreach(_ match {
-    //   case u: uAssg => println("uAssg", u.v, u.newval)
-    //   case c: cAssg => println("cassg", c.v, c.cnd, c.newval, c.oldval)
-    // })
-    // println("##########")
-    // val opstmts = pstmts.map(optimizePstmt)
-    // println("return id", res.head.id)
-    // println("variable", getVar(res.head.id))
-    // println("type", getVar(res.head.id).typ)
-    // //(getVar(res.head.id))
-    // result
   }
 
   override def pureMethod(meth: in.PureMethod)(ctx: Context): MemberWriter[vpr.Function] = {
