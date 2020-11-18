@@ -13,7 +13,6 @@ import viper.silver.{ast => vpr}
 import viper.gobra.util.Violation.violation
 import viper.gobra.theory.Addressability.Exclusive
 import viper.gobra.reporting.Source.Parser.Info
-// import viper.gobra.ast.internal.transform.OverflowChecksTransform
 
 class PureMethodsImpl extends PureMethods {
 
@@ -34,7 +33,7 @@ class PureMethodsImpl extends PureMethods {
     sealed trait assg extends pstmt { def v: in.LocalVar }
     class cAssg(val v: in.LocalVar, val cnd: Vector[in.Expr], val newval: in.Expr, val oldval: in.Expr) extends assg
     class uAssg(val v: in.LocalVar, val newval: in.Expr) extends assg
-    class assrt(val ass:in.Expr, val info:Info) extends pstmt
+    class assrt(val ass:in.Expr, val path:Vector[in.Expr],val info:Info) extends pstmt
     class ret(val v:in.Expr) extends pstmt
 
     val finfo = x.info
@@ -176,7 +175,8 @@ class PureMethodsImpl extends PureMethods {
 
         case a @ in.Assert(assrtn) => {
           val ass = goAssertion(assrtn)
-          Vector(new assrt(ass,a.info))
+          println("#### assert",ass)
+          Vector(new assrt(ass,computePath(path),a.info))
         }
 
         // case in.Assume(ass) =>
@@ -340,7 +340,8 @@ y.info
 
     pstmts.map(optimizePstmt).foreach((s)=>s match {
       case r: ret => result = encodeAssignementList(assgs,r.v)
-      case a: assrt => posts :+ in.ExprAssertion(encodeAssignementList(assgs,a.ass))(a.info)
+      case a: assrt => posts :+= 
+          in.ExprAssertion(encodeAssignementList(assgs,in.Conditional(andConditions(a.path),a.ass,in.BoolLit(true)(finfo),in.BoolT(Exclusive))(finfo)))(finfo)
       case a: assg => assgs :+=a
     })
     (result,posts)
